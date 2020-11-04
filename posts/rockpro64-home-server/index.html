@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en-us">
+    <head>
+		<meta charset="UTF-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+		<title>Rockpro64 Home Server / NAS &middot; Cody Greene</title>
+
+		
+  		<link rel="stylesheet" href="/css/style.css">
+		
+
+		
+	</head>
+
+    <body>
+        		<nav class="nav">
+			<div class="nav-container">
+				<a href="/">
+					<h2 class="nav-title">Cody Greene</h2>
+				</a>
+				<ul>
+    
+    
+        <li>
+            <a href="/about/">
+                
+                <span>About</span>
+                
+            </a>
+        </li>
+    
+        <li>
+            <a href="/">
+                
+                <span>Posts</span>
+                
+            </a>
+        </li>
+    
+</ul>
+			</div>
+		</nav>
+
+        
+
+<main>
+	<div class="post">
+		<div class="post-info">
+  <time datetime="2020-10-30 13:44:01 -0700 PDT">October 30, 2020</time>
+</div>
+
+		<h1 class="post-title">Rockpro64 Home Server / NAS</h1>
+<div class="post-line"></div>
+
+		
+
+		<p>I&rsquo;ve had a RaspberryPi running as a home server for a while now, but as I&rsquo;ve added new services the age of the little board has really begun to show. It&rsquo;s simply not powerful enough to run everything I&rsquo;d like it to: Pi-hole, Syncthing, Jellyfin, OpenVPN, and so on. I had been considering upgrading to RPi4, but stumbled across the <a href="https://www.pine64.org/rockpro64">RockPro64 Single Board Computer</a>. With six cores, 4GB of RAM, and a solid NAS case this seemed perfect for my needs. Not only will I have more power, but I&rsquo;ll have room in the NAS case for two large hard-drives with which I can set up RAID1 for robust, remote backups.</p>
+<h2 id="table-of-contents">Table of Contents</h2>
+<ul>
+<li><a href="#hardware">Hardware</a></li>
+<li><a href="#os-installation">OS Installation</a></li>
+<li><a href="#btrfs-and-the-hdds">BTRFS &amp; The HDDs</a>
+<ul>
+<li><a href="#test-run">Test Run</a></li>
+<li><a href="#move-root-filesystem">Move The Root Filesystem</a></li>
+</ul>
+</li>
+<li><a href="#troubleshooting">Troubleshooting</a></li>
+</ul>
+<h2 id="hardware">Hardware</h2>
+<ul>
+<li>$45 ROCKPro64 Metal Desktop/NAS Casing</li>
+<li>$80 RockPro64 4GB SBC</li>
+<li>$3.50 ROCKPro64 20mm Heatsink</li>
+<li>$13 ROCKPro64 12V 5A US POWER SUPPLY</li>
+<li>$10 ROCKPro64 PCI-e to Dual SATA-II Interface Card</li>
+<li>$80 (x2) Seagate IronWolf 2TB NAS HDD</li>
+<li>16GB MicroSD card I had sitting around</li>
+</ul>
+<p>The SD card does not need to be very large; it needs just enough space for a /boot partition and a minimal OS installation. Even 8GB is more than sufficient. I&rsquo;ll quickly move the root partion to a HDD for more space and better read/write performance. Also, with 2x 3.5&quot; hard drives, the 30mm &ldquo;Tall&rdquo; heatsink was actually touching the HDD casing. The screw holes on the HDD bracket are aligned such that the drives must be installed upside-down. If that were not the case then there might be just enough space to safely use the 30mm heatsink.</p>
+<p>Total cost including shipping: $339.81. All available on <a href="https://store.pine64.org">https://store.pine64.org</a> except for the IronWolf HDDs — which, I should note, actually cost more than all the other parts combined despite being rather cheap storage compared to a 2.5&quot; SSD. See <a href="https://www.youtube.com/watch?v=_UeeklKo0Og">video assembly guide</a>.</p>
+<h2 id="os-installation">OS Installation</h2>
+<p>I chose to use Manjaro ARM, since I&rsquo;m already using Manjaro on my Thinkpad and pacman is the best thing ever. Step one is to plug the SD card in to a reader and run manjaro-arm-installer.
+Once that&rsquo;s done I&rsquo;ll add my ssh key to the new system and enable remote access. See <a href="https://wiki.archlinux.org/index.php/OpenSSH#Server_usage">https://wiki.archlinux.org/index.php/OpenSSH#Server_usage</a> for any additional changes you might like to make.</p>
+<pre><code>pacman -S manjaro-arm-installer
+manjaro-arm-installer
+
+# remount the SD card partitions to make additional changes
+mount /dev/sda2 /mnt
+mount /dev/sda1 /mnt/boot
+
+# add ssh key
+sudo mkdir /mnt/home/cody/.ssh
+cat .ssh/id_ed25519.pub | sudo tee /mnt/home/cody/.ssh/authorized_keys
+
+# chroot into the SD card, emulating aarch64 with qemu
+pacman -S manjaro-arm-tools
+cp /usr/bin/qemu-aarch64-static /mnt/usr/bin/
+systemd-nspawn -q --resolv-conf=copy-host --timezone=off -D /mnt
+
+# now a root shell on SD card
+pacman -S --needed inetutils base-devel git vim openssh
+# edit /etc/ssh/sshd_config, disable passwd auth ...
+chown -R cody:cody /home/cody/.ssh
+chmod 700 /home/cody/.ssh
+chmod 600 /home/cody/.ssh/authorized_keys
+systemctl enable sshd
+exit
+</code></pre><p>Now that&rsquo;s all done, plug the SD card into the RockPro64, see if it boots up, and if SSH access works.</p>
+<h2 id="btrfs-and-the-hdds">BTRFS and the HDDs</h2>
+<p>I&rsquo;ll be using <a href="https://en.wikipedia.org/wiki/Btrfs">BTRFS</a> RAID1 (mirrored) for the root partion as well as for remote backups of my laptop and any other important data that benefits from redundant storage devices. BTRFS, by the way, is a relatively modern copy-on-write filesystem that allows for software RAID configurations. But I also want to maximize storage space for less important multimedia files. So here&rsquo;s the plan:</p>
+<pre><code>disk A partitions: sda1|       sda2|
+                       +RAID1      +RAID0 (btrfs)
+disk B partitions: sdb1|       sdb2|
+</code></pre><p>The NAS case only has space for 2 HDDs, just barely. If I use BTRFS for sofware RAID I can split the disks evenly into four partitions of 1TB each. Then I&rsquo;ll have 1TB of RAID1 (mirrored, between sda1 &amp; sdb1) storage for rootfs and backups as well as 2TB of RAID0 (striped, between sda2 &amp; sdb2) storage for large multimedia files. I get an extra 1TB compared to using only RAID1 over the entire disk.</p>
+<h3 id="test-run">Test Run</h3>
+<p>I can use .img files to try out this configuration.</p>
+<pre><code>sudo pacman -S btrfs-progs
+
+# Create the two &quot;disks&quot; 300MB each
+dd if=/dev/zero of=diska.img bs=1M count=300
+dd if=/dev/zero of=diskb.img bs=1M count=300
+
+# Create the partition tables
+parted -s diska.img \
+  mklabel gpt \
+  mkpart MIRROR_A btrfs 0% 50% \
+  mkpart STRIPE_A btrfs 50% 100%
+parted -s diskb.img \
+  mklabel gpt \
+  mkpart MIRROR_B btrfs 0% 50% \
+  mkpart STRIPE_B btrfs 50% 100%
+
+# create BTRFS filesystems
+sudo losetup -Pf --show diska.img
+sudo losetup -Pf --show diskb.img
+sudo mkfs.btrfs -d raid1 /dev/loop0p1 /dev/loop1p1
+sudo mkfs.btrfs -d raid0 /dev/loop0p2 /dev/loop1p2
+
+sudo mkdir /mnt/{root,multimedia}
+sudo mount /dev/loop0p1 /mnt/root
+sudo mount /dev/loop0p2 /mnt/multimedia
+
+# create some files on the mounted filesystems
+sudo touch /mnt/multimedia/foo ...
+
+# tear down
+sudo umount /mnt/{root,multimedia}
+sudo losetup -d /dev/loop{0,1}
+rm diska.img diskb.img
+</code></pre><h3 id="move-the-root-filesystem">Move The Root Filesystem</h3>
+<p>After a successful test run, I&rsquo;m now ready to SSH into the RockPro64 box and format the attached disks as previously outlined. Then I can move the root filesystem from the SD card to the mirrored partitions.</p>
+<pre><code># /dev/mmcblk1 = SD card
+# /dev/sda     = HDD A
+# /dev/sdb     = HDD B
+sudo pacman -S btrfs-progs
+
+# Create partition tables
+sudo parted -a optimal /dev/sda \
+  mklabel gpt \
+  mkpart MIRROR_A btrfs 0% 50% \
+  mkpart STRIPE_A btrfs 50% 100%
+sudo parted -a optimal /dev/sdb \
+  mklabel gpt \
+  mkpart MIRROR_B btrfs 0% 50% \
+  mkpart STRIPE_B btrfs 50% 100%
+
+# Create the filesystems
+sudo mkfs.btrfs -d raid1 /dev/sda1 /dev/sdb1
+sudo mkfs.btrfs -d raid0 /dev/sda2 /dev/sdb2
+
+# Mount the multimedia partition
+# n.b. either device can be specified (/dev/sda2, /dev/sdb2)
+#      as they both refer to the same RAID0 filesystem
+sudo mkdir /multimedia
+sudo mount /dev/sda2 /multimedia
+
+# mount /dev/sda2 -&gt; /multimedia on boot
+# get UUID with: lsblk -f
+# update /etc/fstab:
+#   UUID=xxx /multimedia btrfs defaults 0 0
+
+# Mount the new rootfs and copy the old one over
+sudp pacman -S rsync
+sudo mount /dev/sda1 /mnt
+sudo rsync -qaxHAXS / /mnt
+
+# Make sure BTRFS can be used at boot
+# update /etc/mkinitcpio.conf:
+#   MODULES=(rockchipdrm btrfs)
+
+# rebuild initramfs
+sudo mkinitcpio -p linux-aarch64
+
+# Change the root fs when the system reboots
+# update /boot/extlinux/extlinux.conf:
+#   APPEND ... root=UUID=xxx rootflags=autodefrag
+</code></pre><p>Now reboot the system. If it doesn&rsquo;t work, take out the SD card and undo the changes to /boot/extlinux/extlinux.conf and /etc/fstab to get a working system again. But if all goes well then celebrate by installing your favorite software on your new home server. Try <a href="https://syncthing.net">syncthing</a>, <a href="https://pi-hole.net">pi-hole</a>, and <a href="https://jellyfin.org">jellyfin</a>!</p>
+<h2 id="problemstroubleshooting">Problems/Troubleshooting</h2>
+<p>Some time after I set this up my root filesystem was getting slowly corrupted, my many I/O errors showing up in the system log. Thankfully I was able to recover all my data with <code>btrfs-scrub</code>. And, it turned out, the corruption was due to a loose SATA cable; the NAS case is so cramped with the cables coming right out of the HDD and being right next to the case fan, it&rsquo;s under some awkward force. So here&rsquo;s what I did: I replaced both SATA cables with ones that had right-angle connectors, and applied some non-acidic quick-drying tacky glue on one side as well. The glue is easy to remove and won&rsquo;t eat through the plastic, but will help keep the connection secure. Then, to repair my filesystem I needed to run some btrfs utilities, so I pulled out the sdcard and reverted the boot configuration (/boot/extlinux/extlinux.conf) to use the sdcard as the rootfs again. Then I could boot up the rockpro again, fix the btrfs filesystem, and update extlinux.conf (again) once everything checks out.</p>
+<pre><code># verify the btrfs devices
+btrfs filesystem show
+</code></pre><p>My filesystem was heavily corrupted, I could run barely any of the binaries on it, but it was still mountable. So here&rsquo;s how I got it back in working order.</p>
+<pre><code># while unmounted
+btrfs check /dev/sda1
+&gt; lots of csum erorrs
+
+mount /dev/sda1 /mnt
+btrfs scrub start -B /mnt
+
+# check the filesystem again
+umount /mnt
+btrfs check /dev/sda1
+&gt; still have error about the free space cache
+
+btrfs check --clear-free-space-cache v1 /dev/sda1
+&gt; no errors!
+</code></pre>
+
+		
+	</div>
+
+	<div class="pagination">
+
+		<a href="#" class="top">Top</a>
+	</div>
+</main>
+
+
+        		<footer>
+		</footer>
+
+    </body>
+</html>
