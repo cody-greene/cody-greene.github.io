@@ -3,30 +3,30 @@
   xmlns:xhtml="http://www.w3.org/1999/xhtml">
   
   <url>
-    <loc>http://variable.run/</loc>
-    <lastmod>2020-10-30T13:44:01-07:00</lastmod>
+    <loc>https://blog.variable.run/</loc>
+    <lastmod>2020-10-30T00:00:00+00:00</lastmod>
   </url>
   
   <url>
-    <loc>http://variable.run/posts/</loc>
-    <lastmod>2020-10-30T13:44:01-07:00</lastmod>
+    <loc>https://blog.variable.run/posts/</loc>
+    <lastmod>2020-10-30T00:00:00+00:00</lastmod>
   </url>
   
   <url>
-    <loc>http://variable.run/posts/rockpro64-home-server/</loc>
-    <lastmod>2020-10-30T13:44:01-07:00</lastmod>
+    <loc>https://blog.variable.run/posts/rockpro64-home-server/</loc>
+    <lastmod>2020-10-30T00:00:00+00:00</lastmod>
   </url>
   
   <url>
-    <loc>http://variable.run/about/</loc>
+    <loc>https://blog.variable.run/about/</loc>
   </url>
   
   <url>
-    <loc>http://variable.run/categories/</loc>
+    <loc>https://blog.variable.run/categories/</loc>
   </url>
   
   <url>
-    <loc>http://variable.run/tags/</loc>
+    <loc>https://blog.variable.run/tags/</loc>
   </url>
   
 </urlset>
